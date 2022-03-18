@@ -13,6 +13,9 @@ import GHC.TypeLits
 import Data.Type.Bool
 import Data.Type.Equality
 
+import Rearrange.Typeclass
+import Rearrange.Rearrangeable (Rearrangeable(..))
+
 data Proxy (p :: k) = Proxy
 
 -- Value-level 'Set' representation,  essentially a list
@@ -22,6 +25,13 @@ data Set (n :: [k]) where
     Empty :: Set '[]
     {--| Extend a set with an element -}
     Ext :: e -> Set s -> Set (e ': s)
+
+instance Rearrangeable Set where
+  rConsToHead (Ext x _) = Ext x
+  rTail (Ext _ xs) = xs
+  rEmpty = Empty
+  rCons = Ext
+  rHead (Ext x _) = x
 
 instance Show (Set '[]) where
     show Empty = "{}"
@@ -55,8 +65,8 @@ instance (Ord a, Ord (Set s)) => Ord (Set (a ': s)) where
 type AsSet s = Nub (Sort s)
 
 {-| At the value level, noramlise the list form to the set form -}
-asSet :: (Sortable s, Nubable (Sort s)) => Set s -> Set (AsSet s)
-asSet x = nub (quicksort x)
+asSet :: (Permute Set s (AsSet s)) => Set s -> Set (AsSet s)
+asSet = permute
 
 {-| Predicate to check if in the set form -}
 type IsSet s = (s ~ Nub (Sort s))

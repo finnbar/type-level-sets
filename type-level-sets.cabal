@@ -87,7 +87,8 @@ library
                         Data.Type.Map
 
   build-depends:        base < 5,
-                        ghc-prim
+                        ghc-prim,
+                        rearrangements
 
 test-suite tests
   type: exitcode-stdio-1.0
