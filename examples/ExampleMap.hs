@@ -8,8 +8,9 @@ import Data.Type.Map
 -- Specify that key-value pairs on Ints combine to an Int
 type instance Combine Int Int = Int
 -- Specify that Int values for matching keys should be added
-instance Combinable Int Int where
-    combine x y = x + y
+-- TODO: uncomment this once combining behaviour worked out
+-- instance Combinable Int Int where
+--    combine x y = x + y
 
 foo :: Map '["x" :-> Int, "z" :-> Bool, "w" :-> Int]
 foo = Ext (Var :: (Var "x")) 2

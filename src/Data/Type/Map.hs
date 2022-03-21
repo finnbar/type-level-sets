@@ -7,20 +7,22 @@ The implementation is similar to that shown in the paper.
              FlexibleInstances, GADTs, FlexibleContexts, ScopedTypeVariables,
              ConstraintKinds, IncoherentInstances #-}
 
-module Data.Type.Map (Mapping(..), Union, Unionable, union, append, Var(..), Map(..),
+module Data.Type.Map (Mapping(..), Union, union, append, Var(..), Map(..),
                         ext, empty, mapLength,
-                        Combine, Combinable(..), Cmp,
-                        Nubable, nub,
-                        Lookup, Member, (:\), Split, split,
+                        Combine, Cmp,
+                        nub,
+                        Lookup, Member, (:\), split,
                         IsMember, lookp, Updatable, update,
                         IsMap, AsMap, asMap,
-                        Sortable, quicksort,
-                        Submap, submap) where
+                        quicksort,
+                        submap) where
 
 import GHC.TypeLits
 import Data.Type.Bool
 import Data.Type.Equality
 import Data.Type.Set (Cmp, Proxy(..), Flag(..), Sort, Filter, (:++))
+import Rearrange.Typeclass
+import Rearrange.Rearrangeable
 
 {- Throughout, type variables
    'k' ranges over "keys"
@@ -78,8 +80,14 @@ data Map (n :: [Mapping Symbol *]) where
     Empty :: Map '[]
     Ext :: Var k -> v -> Map m -> Map ((k :-> v) ': m)
 
+instance Rearrangeable Map where
+  rConsToHead (Ext x v _) = Ext x v
+  rTail (Ext _ _ xs) = xs
+  rEmpty = Empty
+
 {-| Smart constructor which normalises the representation -}
-ext :: (Sortable ((k :-> v) ': m), Nubable (Sort ((k :-> v) ': m))) => Var k -> v -> Map m -> Map (AsMap ((k :-> v) ': m))
+ext :: (RDel Map ((k :-> v) ': m) (AsMap ((k :-> v) ': m)))
+    => Var k -> v -> Map m -> Map (AsMap ((k :-> v) ': m))
 ext k v m = asMap $ Ext k v m
 
 {-| Smart constructor to match `ext` (but doesn't do anything other than wrap Empty) -}
@@ -129,8 +137,8 @@ type IsMap s = (s ~ Nub (Sort s))
 type AsMap s = Nub (Sort s)
 
 {-| At the value level, noramlise the list form to the map form -}
-asMap :: (Sortable s, Nubable (Sort s)) => Map s -> Map (AsMap s)
-asMap x = nub (quicksort x)
+asMap :: (RDel Map s (AsMap s)) => Map s -> Map (AsMap s)
+asMap = fst . rDel
 
 instance Show (Map '[]) where
     show Empty = "{}"
@@ -157,11 +165,12 @@ instance Ord (Map '[]) where
 instance (Ord v, Ord (Map s)) => Ord (Map ((k :-> v) ': s)) where
     compare (Ext Var v m) (Ext Var v' m') = compare v v' `mappend` compare m m'
 
-{-| Union of two finite maps (normalising) -}
-union :: (Unionable s t) => Map s -> Map t -> Map (Union s t)
-union s t = nub (quicksort (append s t))
-
-type Unionable s t = (Nubable (Sort (s :++ t)), Sortable (s :++ t))
+{-| Union of two finite maps (normalising)
+    Note that we can't use the same trick as with Set's union since you can't
+    have a Map which contains a Map.
+-}
+union :: (RDel Map (s :++ t) (Union s t)) => Map s -> Map t -> Map (Union s t)
+union s t = fst $ rDel (append s t)
 
 {-| Append of two finite maps (non normalising) -}
 append :: Map s -> Map t -> Map (s :++ t)
@@ -172,105 +181,19 @@ type instance Cmp (k :: Symbol) (k' :: Symbol) = CmpSymbol k k'
 type instance Cmp (k :-> v) (k' :-> v') = CmpSymbol k k'
 
 {-| Value-level quick sort that respects the type-level ordering -}
-class Sortable xs where
-    quicksort :: Map xs -> Map (Sort xs)
+quicksort :: (RDel Map xs (Sort xs)) => Map xs -> Map (Sort xs)
+quicksort = fst . rDel
 
-instance Sortable '[] where
-    quicksort Empty = Empty
-
-instance (Sortable (Filter FMin (k :-> v) xs)
-         , Sortable (Filter FMax (k :-> v) xs)
-         , FilterV FMin k v xs
-         , FilterV FMax k v xs) => Sortable ((k :-> v) ': xs) where
-    quicksort (Ext k v xs) =
-        quicksort (less k v xs) `append` Ext k v Empty `append` quicksort (more k v xs)
-      where
-        less = filterV (Proxy::(Proxy FMin))
-        more = filterV (Proxy::(Proxy FMax))
-
-{- Filter out the elements less-than or greater-than-or-equal to the pivot -}
-class FilterV (f::Flag) k v xs where
-    filterV :: Proxy f -> Var k -> v -> Map xs -> Map (Filter f (k :-> v) xs)
-
-instance FilterV f k v '[] where
-    filterV _ k v Empty      = Empty
-
-instance (Conder (Cmp x (k :-> v) == LT), FilterV FMin k v xs) => FilterV FMin k v (x ': xs) where
-    filterV f@Proxy k v (Ext k' v' xs) =
-      cond (Proxy::(Proxy (Cmp x (k :-> v) == LT)))
-          (Ext k' v' (filterV f k v xs))
-          (filterV f k v xs)
-
-instance
-       (Conder ((Cmp x (k :-> v) == GT) || (Cmp x (k :-> v) == EQ)), FilterV FMax k v xs)
-    => FilterV FMax k v (x ': xs) where
-    filterV f@Proxy k v (Ext k' v' xs) =
-      cond (Proxy::(Proxy ((Cmp x (k :-> v) == GT) || (Cmp x (k :-> v) == EQ))))
-           (Ext k' v' (filterV f k v xs))
-           (filterV f k v xs)
-
-class Combinable t t' where
-    combine :: t -> t' -> Combine t t'
-
-class Nubable t where
-    nub :: Map t -> Map (Nub t)
-
-instance Nubable '[] where
-    nub Empty = Empty
-
-instance Nubable '[e] where
-    nub (Ext k v Empty) = Ext k v Empty
-
-instance {-# OVERLAPPABLE #-}
-     (Nub (e ': f ': s) ~ (e ': Nub (f ': s)),
-              Nubable (f ': s)) => Nubable (e ': f ': s) where
-    nub (Ext k v (Ext k' v' s)) = Ext k v (nub (Ext k' v' s))
-
-instance {-# OVERLAPS #-}
-       (Combinable v v', Nubable ((k :-> Combine v v') ': s))
-    => Nubable ((k :-> v) ': (k :-> v') ': s) where
-    nub (Ext k v (Ext k' v' s)) = nub (Ext k (combine v v') s)
-
-
-class Conder g where
-    cond :: Proxy g -> Map s -> Map t -> Map (If g s t)
-
-instance Conder True where
-    cond _ s t = s
-
-instance Conder False where
-    cond _ s t = t
-
+-- TODO: the original tls allows custom merging behaviour.
+-- (via a Combinable typeclass)
+-- Can we support that somehow?
+nub :: (RDel Map t (Nub t)) => Map t -> Map (Nub t)
+nub = fst . rDel
 
 {-| Splitting a union of maps, given the maps we want to split it into -}
-class Split s t st where
-   -- where st ~ Union s t
-   split :: Map st -> (Map s, Map t)
-
-instance Split '[] '[] '[] where
-   split Empty = (Empty, Empty)
-
-instance {-# OVERLAPPABLE #-} Split s t st => Split (x ': s) (x ': t) (x ': st) where
-   split (Ext k v st) = let (s, t) = split st
-                        in (Ext k v s, Ext k v t)
-
-instance {-# OVERLAPS #-} Split s t st => Split (x ': s) t (x ': st) where
-   split (Ext k v st) = let (s, t) = split st
-                        in  (Ext k v s, t)
-
-instance {-# OVERLAPS #-} (Split s t st) => Split s (x ': t) (x ': st) where
-   split (Ext k v st) = let (s, t) = split st
-                        in  (s, Ext k v t)
+split :: (RDel Map st s, RDel Map st t) => Map st -> (Map s, Map t)
+split st = (fst $ rDel st, fst $ rDel st)
 
 {-| Construct a submap 's' from a supermap 't' -}
-class Submap s t where
-   submap :: Map t -> Map s
-
-instance Submap '[] '[] where
-   submap xs = Empty
-
-instance {-# OVERLAPPABLE #-} Submap s t => Submap s (x ': t) where
-   submap (Ext _ _ xs) = submap xs
-
-instance {-# OVERLAPS #-} Submap s t => Submap  (x ': s) (x ': t) where
-   submap (Ext k v xs) = Ext k v (submap xs)
+submap :: (RDel Map t s) => Map t -> Map s
+submap = fst . rDel

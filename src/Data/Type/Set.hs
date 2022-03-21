@@ -14,7 +14,7 @@ import Data.Type.Bool
 import Data.Type.Equality
 
 import Rearrange.Typeclass
-import Rearrange.Rearrangeable (Rearrangeable(..))
+import Rearrange.Rearrangeable
 
 data Proxy (p :: k) = Proxy
 
@@ -30,6 +30,7 @@ instance Rearrangeable Set where
   rConsToHead (Ext x _) = Ext x
   rTail (Ext _ xs) = xs
   rEmpty = Empty
+instance RearrangeableStar Set where
   rCons = Ext
   rHead (Ext x _) = x
 
@@ -131,6 +132,8 @@ type family Nub t where
 
 {-| Value-level counterpart to the type-level 'Nub' -}
 
+-- TODO: the original tls allows custom merging behaviour.
+-- Can we support that somehow?
 nub :: (RDel Set t (Nub t)) => Set t -> Set (Nub t)
 nub = fst . rDel
 
