@@ -3,9 +3,9 @@
              FlexibleContexts, UndecidableInstances, ConstraintKinds,
              ScopedTypeVariables, TypeInType, TypeApplications #-}
 
-module Data.Type.Set (Set(..), Union, union, quicksort, append,
-                      Sort, (:++), split, Cmp, Filter, Flag(..),
-                      Nub, AsSet, asSet, IsSet, subset,
+module Data.Type.Set (Set(..), Union, Unionable, union, quicksort, append,
+                      Sort, Sortable, (:++), Split, split, Cmp, Filter, Flag(..),
+                      Nub, Nubable, nub, AsSet, asSet, IsSet, Subset, subset,
                       Delete(..), Proxy(..), remove, Remove, (:\),
                       Elem(..), Member(..), MemberP, NonMember) where
 
@@ -66,8 +66,9 @@ instance (Ord a, Ord (Set s)) => Ord (Set (a ': s)) where
 type AsSet s = Nub (Sort s)
 
 {-| At the value level, noramlise the list form to the set form -}
-asSet :: (RDel Set s (AsSet s)) => Set s -> Set (AsSet s)
-asSet = fst . rDel
+asSet :: (RDel Set s (Sort s), Nubable (Sort s))
+  => Set s -> Set (AsSet s)
+asSet = nub . quicksort
 
 {-| Predicate to check if in the set form -}
 type IsSet s = (s ~ Nub (Sort s))
@@ -75,18 +76,25 @@ type IsSet s = (s ~ Nub (Sort s))
 {-| Useful properties to be able to refer to someties -}
 type SetProperties (f :: [k]) =
   ( Union f ('[] :: [k]) ~ f,
+    Split f ('[] :: [k]) f,
     Union ('[] :: [k]) f ~ f,
-    Union f f ~ f
+    Split ('[] :: [k]) f f,
+    Union f f ~ f,
+    Split f f f,
+    Unionable f ('[] :: [k]),
+    Unionable ('[] :: [k]) f
   )
 {-- Union --}
 
 {-| Union of sets -}
 type Union s t = Nub (Sort (s :++ t))
+type Unionable s t = (Sortable (s :++ t),
+  Nubable (Sort (s :++ t)))
 
 union :: forall s t.
-  (RDel Set '[Set s, Set t] (Union s t))
+  Unionable s t
   => Set s -> Set t -> Set (Union s t)
-union s t = fst $ rDel (Ext s (Ext t Empty))
+union s t = nub $ quicksort (append s t)
 
 {-| List append (essentially set disjoint union) -}
 type family (:++) (x :: [k]) (y :: [k]) :: [k] where
@@ -118,8 +126,10 @@ instance {-# OVERLAPPABLE #-} (((y : xs) :\ x) ~ (y : (xs :\ x)), Remove xs x)
       => Remove (y ': xs) x where
   remove (Ext y xs) (x@Proxy) = Ext y (remove xs x)
 
+type Split s t st = (RDel Set st s, RDel Set st t)
+
 {-| Splitting a union a set, given the sets we want to split it into -}
-split :: (RDel Set st s, RDel Set st t) =>
+split :: Split s t st =>
   Set st -> (Set s, Set t)
 split inp = (fst $ rDel inp, fst $ rDel inp)
 
@@ -130,15 +140,30 @@ type family Nub t where
     Nub (e ': e ': s) = Nub (e ': s)
     Nub (e ': f ': s) = e ': Nub (f ': s)
 
-{-| Value-level counterpart to the type-level 'Nub' -}
+{-| Value-level counterpart to the type-level 'Nub'
+    Note: the value-level case for equal types is not define here,
+          but should be given per-application, e.g., custom 'merging' behaviour may be required -}
 
--- TODO: the original tls allows custom merging behaviour.
--- Can we support that somehow?
-nub :: (RDel Set t (Nub t)) => Set t -> Set (Nub t)
-nub = fst . rDel
+class Nubable t where
+    nub :: Set t -> Set (Nub t)
+
+instance Nubable '[] where
+    nub Empty = Empty
+
+instance Nubable '[e] where
+    nub (Ext x Empty) = Ext x Empty
+
+instance Nubable (e ': s) => Nubable (e ': e ': s) where
+    nub (Ext _ (Ext e s)) = nub (Ext e s)
+
+instance {-# OVERLAPS #-} (Nub (e ': f ': s) ~ (e ': Nub (f ': s)),
+              Nubable (f ': s)) => Nubable (e ': f ': s) where
+    nub (Ext e (Ext f s)) = Ext e (nub (Ext f s))
+
+type Subset s t = RDel Set t s
 
 {-| Construct a subsetset 's' from a superset 't' -}
-subset :: (RDel Set t s) => Set t -> Set s
+subset :: Subset s t => Set t -> Set s
 subset = fst . rDel
 
 {-| Type-level quick sort for normalising the representation of sets -}
@@ -162,8 +187,10 @@ type family DeleteFromList (e :: elem) (list :: [elem]) where
 type family Delete elem set where
     Delete elem (Set xs) = Set (DeleteFromList elem xs)
 
+type Sortable xs = RDel Set xs (Sort xs)
+
 {-| Value-level quick sort that respects the type-level ordering -}
-quicksort :: (RDel Set xs (Sort xs)) => Set xs -> Set (Sort xs)
+quicksort :: Sortable xs => Set xs -> Set (Sort xs)
 quicksort = fst . rDel
 
 {-| Open-family for the ordering operation in the sort -}
