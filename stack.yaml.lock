@@ -9,12 +9,12 @@ packages:
     version: 0.1.0.0
     git: https://github.com/finnbar/rearrangements.git
     pantry-tree:
-      size: 956
-      sha256: 4a76a8a31d9c507ed04f83e5122db24dca39028ba8d6a66683644a0794ffd7b9
-    commit: fa8a36d433dcfc60af98c79e19e37273ceafc65d
+      size: 957
+      sha256: 63b83bb863edb876834458afdf67ecbe3b1a69a0b29571237e1dc832be944f74
+    commit: 93dcf686ed76705d758b56451745436107338b91
   original:
     git: https://github.com/finnbar/rearrangements.git
-    commit: fa8a36d433dcfc60af98c79e19e37273ceafc65d
+    commit: 93dcf686ed76705d758b56451745436107338b91
 snapshots:
 - completed:
     size: 587546
