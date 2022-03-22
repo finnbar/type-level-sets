@@ -10,7 +10,7 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - git: https://github.com/finnbar/rearrangements.git
-  commit: ac4571d635f6138c2da16731007a7c54d700d52f
+  commit: fa8a36d433dcfc60af98c79e19e37273ceafc65d
 
 # Override default flag values for local packages and extra-deps
 flags: {}

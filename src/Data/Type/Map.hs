@@ -186,7 +186,7 @@ type Sortable xs = RDel Map xs (Sort xs)
 
 {-| Value-level quick sort that respects the type-level ordering -}
 quicksort :: Sortable xs => Map xs -> Map (Sort xs)
-quicksort = fst . rDel
+quicksort = rDel
 
 class Combinable t t' where
     combine :: t -> t' -> Combine t t'
@@ -214,10 +214,10 @@ type Split s t st = (RDel Map st s, RDel Map st t)
 
 {-| Splitting a union of maps, given the maps we want to split it into -}
 split :: Split s t st => Map st -> (Map s, Map t)
-split st = (fst $ rDel st, fst $ rDel st)
+split st = (rDel st, rDel st)
 
 type Submap s t = RDel Map t s
 
 {-| Construct a submap 's' from a supermap 't' -}
 submap :: Submap s t => Map t -> Map s
-submap = fst . rDel
+submap = rDel

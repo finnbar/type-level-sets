@@ -131,7 +131,7 @@ type Split s t st = (RDel Set st s, RDel Set st t)
 {-| Splitting a union a set, given the sets we want to split it into -}
 split :: Split s t st =>
   Set st -> (Set s, Set t)
-split inp = (fst $ rDel inp, fst $ rDel inp)
+split inp = (rDel inp, rDel inp)
 
 {-| Remove duplicates from a sorted list -}
 type family Nub t where
@@ -164,7 +164,7 @@ type Subset s t = RDel Set t s
 
 {-| Construct a subsetset 's' from a superset 't' -}
 subset :: Subset s t => Set t -> Set s
-subset = fst . rDel
+subset = rDel
 
 {-| Type-level quick sort for normalising the representation of sets -}
 type family Sort (xs :: [k]) :: [k] where
@@ -191,7 +191,7 @@ type Sortable xs = RDel Set xs (Sort xs)
 
 {-| Value-level quick sort that respects the type-level ordering -}
 quicksort :: Sortable xs => Set xs -> Set (Sort xs)
-quicksort = fst . rDel
+quicksort = rDel
 
 {-| Open-family for the ordering operation in the sort -}
 
