@@ -5,17 +5,17 @@ The implementation is similar to that shown in the paper.
 {-# LANGUAGE TypeOperators, PolyKinds, DataKinds, KindSignatures,
              TypeFamilies, UndecidableInstances, MultiParamTypeClasses,
              FlexibleInstances, GADTs, FlexibleContexts, ScopedTypeVariables,
-             ConstraintKinds, IncoherentInstances #-}
+             ConstraintKinds #-}
 
-module Data.Type.Map (Mapping(..), Union, union, append, Var(..), Map(..),
+module Data.Type.Map (Mapping(..), Union, Unionable, union, append, Var(..), Map(..),
                         ext, empty, mapLength,
-                        Combine, Cmp,
-                        nub,
-                        Lookup, Member, (:\), split,
+                        Combine, Combinable(..), Cmp,
+                        Nubable, nub,
+                        Lookup, Member, (:\), Split, split,
                         IsMember, lookp, Updatable, update,
                         IsMap, AsMap, asMap,
-                        quicksort,
-                        submap) where
+                        Sortable, quicksort,
+                        Submap, submap) where
 
 import GHC.TypeLits
 import Data.Type.Bool
@@ -86,7 +86,7 @@ instance Rearrangeable Map where
   rEmpty = Empty
 
 {-| Smart constructor which normalises the representation -}
-ext :: (RDel Map ((k :-> v) ': m) (AsMap ((k :-> v) ': m)))
+ext :: (Sortable ((k :-> v) ': m), Nubable (Sort ((k :-> v) ': m)))
     => Var k -> v -> Map m -> Map (AsMap ((k :-> v) ': m))
 ext k v m = asMap $ Ext k v m
 
@@ -137,8 +137,8 @@ type IsMap s = (s ~ Nub (Sort s))
 type AsMap s = Nub (Sort s)
 
 {-| At the value level, noramlise the list form to the map form -}
-asMap :: (RDel Map s (AsMap s)) => Map s -> Map (AsMap s)
-asMap = fst . rDel
+asMap :: (Sortable s, Nubable (Sort s)) => Map s -> Map (AsMap s)
+asMap = nub . quicksort
 
 instance Show (Map '[]) where
     show Empty = "{}"
@@ -169,8 +169,10 @@ instance (Ord v, Ord (Map s)) => Ord (Map ((k :-> v) ': s)) where
     Note that we can't use the same trick as with Set's union since you can't
     have a Map which contains a Map.
 -}
-union :: (RDel Map (s :++ t) (Union s t)) => Map s -> Map t -> Map (Union s t)
-union s t = fst $ rDel (append s t)
+type Unionable s t = (Nubable (Sort (s :++ t)), Sortable (s :++ t))
+
+union :: Unionable s t => Map s -> Map t -> Map (Union s t)
+union s t = nub $ quicksort (append s t)
 
 {-| Append of two finite maps (non normalising) -}
 append :: Map s -> Map t -> Map (s :++ t)
@@ -180,20 +182,42 @@ append (Ext k v xs) ys = Ext k v (append xs ys)
 type instance Cmp (k :: Symbol) (k' :: Symbol) = CmpSymbol k k'
 type instance Cmp (k :-> v) (k' :-> v') = CmpSymbol k k'
 
+type Sortable xs = RDel Map xs (Sort xs)
+
 {-| Value-level quick sort that respects the type-level ordering -}
-quicksort :: (RDel Map xs (Sort xs)) => Map xs -> Map (Sort xs)
+quicksort :: Sortable xs => Map xs -> Map (Sort xs)
 quicksort = fst . rDel
 
--- TODO: the original tls allows custom merging behaviour.
--- (via a Combinable typeclass)
--- Can we support that somehow?
-nub :: (RDel Map t (Nub t)) => Map t -> Map (Nub t)
-nub = fst . rDel
+class Combinable t t' where
+    combine :: t -> t' -> Combine t t'
+
+class Nubable t where
+    nub :: Map t -> Map (Nub t)
+
+instance Nubable '[] where
+    nub Empty = Empty
+
+instance Nubable '[e] where
+    nub (Ext k v Empty) = Ext k v Empty
+
+instance {-# OVERLAPPABLE #-}
+     (Nub (e ': f ': s) ~ (e ': Nub (f ': s)),
+              Nubable (f ': s)) => Nubable (e ': f ': s) where
+    nub (Ext k v (Ext k' v' s)) = Ext k v (nub (Ext k' v' s))
+
+instance {-# OVERLAPS #-}
+       (Combinable v v', Nubable ((k :-> Combine v v') ': s))
+    => Nubable ((k :-> v) ': (k :-> v') ': s) where
+    nub (Ext k v (Ext k' v' s)) = nub (Ext k (combine v v') s)
+
+type Split s t st = (RDel Map st s, RDel Map st t)
 
 {-| Splitting a union of maps, given the maps we want to split it into -}
-split :: (RDel Map st s, RDel Map st t) => Map st -> (Map s, Map t)
+split :: Split s t st => Map st -> (Map s, Map t)
 split st = (fst $ rDel st, fst $ rDel st)
 
+type Submap s t = RDel Map t s
+
 {-| Construct a submap 's' from a supermap 't' -}
-submap :: (RDel Map t s) => Map t -> Map s
+submap :: Submap s t => Map t -> Map s
 submap = fst . rDel
